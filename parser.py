@@ -10,14 +10,24 @@ import requests
 import urllib.parse as urlparse
 from bs4 import BeautifulSoup
 import time
+from fake_useragent import UserAgent
+from random import choice
 
 
 def getMainUrl(base_url, add_url):
     return urlparse.urljoin(base_url, add_url)
 
+def getUserAgentProxy():
+    ua = UserAgent(use_cache_server=False)
+    proxies = open('proxies.txt').read().split('\n')
+    useragent = {'User-Agent': ua.random}
+    proxy = {'http': 'http://' + choice(proxies)}
+    return (useragent, proxy)
+
 
 def getBeautifulSoup(url):
-    r  = requests.get(url)
+    headers, proxies = getUserAgentProxy()
+    r  = requests.get(url, headers=headers, proxies=proxies)
     if r.status_code == 200:
         return BeautifulSoup(r.text, features="lxml")
     
@@ -96,6 +106,8 @@ def getLatLon(bs):
     mapDiv = bs.find('div', class_='item-map-wrapper')
     if mapDiv != None:
         return (float(mapDiv.attrs['data-map-lat']), float(mapDiv.attrs['data-map-lon']))
+    else:
+        return (None, None)
 
 
 def getPageItemsDataFrame(main_url, url):
@@ -120,24 +132,27 @@ def getItemData(items_df):
     df = pd.DataFrame(columns = ['Link', 'Floor Num', 'Floor Cnt', 'House Type', 'Rooms Cnt', 'Space Cnt', 'Address', 'Lat', 'Lon'])
     for index, item in items_df.iterrows():
         print(f'Link: {item["Link"]}; Ind: {index}')
-        time.sleep(20)
+        time.sleep(2)
         bs = getBeautifulSoup(item['Link'])
-        if bs != None:
-            df.loc[index, 'Link']       = item['Link']
-            df.loc[index, 'Floor Num']  = getFloorNum(bs)
-            df.loc[index, 'Floor Cnt']  = getFloorCnt(bs)
-            df.loc[index, 'House Type'] = getHouseTyp(bs)
-            df.loc[index, 'Rooms Cnt']  = getRoomsCnt(bs)
-            df.loc[index, 'Space Cnt']  = getSpaceCnt(bs)
-            df.loc[index, 'Address']    = getAddress(bs)
-            df.loc[index, 'Lat'], df.loc[index, 'Lon'] = getLatLon(bs)
-            print(df.head())
+        try:
+            if bs != None:
+                df.loc[index, 'Link']       = item['Link']
+                df.loc[index, 'Floor Num']  = getFloorNum(bs)
+                df.loc[index, 'Floor Cnt']  = getFloorCnt(bs)
+                df.loc[index, 'House Type'] = getHouseTyp(bs)
+                df.loc[index, 'Rooms Cnt']  = getRoomsCnt(bs)
+                df.loc[index, 'Space Cnt']  = getSpaceCnt(bs)
+                df.loc[index, 'Address']    = getAddress(bs)
+                df.loc[index, 'Lat'], df.loc[index, 'Lon'] = getLatLon(bs)
+                print(f'Df len: {df.count()}')
+        except:
+            print(f'Something goes wrong. Skipping')
+        df.to_excel("output.xls")
     return df
 
 
 if __name__ == '__main__':
     base_url = 'https://www.avito.ru' 
-    add_url = '/balakovo/kvartiry/prodam/1-komnatnye'
+    add_url = '/balakovo/kvartiry/prodam/'
     main_url = getMainUrl(base_url, add_url)
     itemdata = getItemData(getItemsDataFrame(base_url, main_url))
-    itemdata.to_excel("output.xls")
